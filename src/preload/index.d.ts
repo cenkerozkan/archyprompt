@@ -12,11 +12,23 @@ interface FileTreeEntry {
   isDirectory: boolean
 }
 
+interface SelectedEntry {
+  path: string
+  isDirectory: boolean
+}
+
+interface AssembleResult {
+  xml: string
+  charCount: number
+  tokenEstimate: number
+}
+
 interface ProjectAPI {
   listProjects(): Promise<Project[]>
   addProject(): Promise<Project[]>
   deleteProjects(ids: string[]): Promise<Project[]>
   readDirectory(dirPath: string): Promise<FileTreeEntry[]>
+  assemblePrompt(entries: SelectedEntry[]): Promise<AssembleResult>
 }
 
 declare global {

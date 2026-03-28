@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useProjectsStore } from '../stores/projects'
+import { usePromptStore } from '../../prompt-builder/stores/prompt'
 import type { FileTreeEntry } from '../types'
 
 const props = defineProps<{
@@ -9,15 +10,22 @@ const props = defineProps<{
 }>()
 
 const store = useProjectsStore()
+const promptStore = usePromptStore()
 
 const isExpanded = computed(() => store.expandedPaths.has(props.entry.path))
 const isLoading = computed(() => store.loadingPaths.has(props.entry.path))
 const children = computed(() => store.directoryCache.get(props.entry.path) ?? [])
+const isChecked = computed(() => promptStore.hasEntry(props.entry.path))
 
 function handleClick(): void {
   if (props.entry.isDirectory) {
     store.toggleDirectory(props.entry.path)
   }
+}
+
+function handleCheck(event: Event): void {
+  event.stopPropagation()
+  promptStore.toggleEntry(props.entry.path, props.entry.isDirectory)
 }
 </script>
 
@@ -25,7 +33,7 @@ function handleClick(): void {
   <div>
     <!-- Row -->
     <div
-      class="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-white/5 cursor-pointer select-none text-sm transition-colors duration-100"
+      class="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-white/5 cursor-pointer select-none text-sm transition-colors duration-100 group"
       :class="entry.isDirectory ? 'text-neutral-200' : 'text-neutral-400'"
       :style="{ paddingLeft: `${8 + depth * 16}px` }"
       @click="handleClick"
@@ -87,7 +95,17 @@ function handleClick(): void {
         <polyline points="14 2 14 8 20 8" />
       </svg>
 
-      <span class="truncate">{{ entry.name }}</span>
+      <span class="truncate flex-1">{{ entry.name }}</span>
+
+      <!-- Checkbox (visible on hover or when checked) -->
+      <input
+        type="checkbox"
+        :checked="isChecked"
+        class="w-3.5 h-3.5 accent-indigo-400 cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+        :class="{ 'opacity-100': isChecked }"
+        @change="handleCheck"
+        @click.stop
+      />
     </div>
 
     <!-- Children (recursive) -->

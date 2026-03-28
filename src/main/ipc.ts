@@ -1,6 +1,7 @@
 import { ipcMain, dialog } from 'electron'
 import { loadProjects, addProject, deleteProjects } from './store'
 import { readDirectoryContents } from './filesystem'
+import { assemblePrompt, type SelectedEntry } from './prompt'
 
 export function registerIpcHandlers(): void {
   ipcMain.handle('projects:list', () => {
@@ -20,6 +21,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('projects:delete', (_event, ids: string[]) => {
     return deleteProjects(ids)
+  })
+
+  ipcMain.handle('prompt:assemble', (_event, entries: SelectedEntry[]) => {
+    return assemblePrompt(entries)
   })
 
   ipcMain.handle('fs:readDirectory', (_event, dirPath: string) => {

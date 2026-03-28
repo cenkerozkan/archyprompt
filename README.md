@@ -35,7 +35,8 @@ archyprompt/
     │   ├── index.ts              # App lifecycle, BrowserWindow creation
     │   ├── ipc.ts                # IPC handler registration (bridges UI ↔ system)
     │   ├── store.ts              # JSON-file persistence for project data
-    │   └── filesystem.ts         # Directory reader — filtering, sorting, lazy reads
+    │   ├── filesystem.ts         # Directory reader — filtering, sorting, lazy reads
+    │   └── prompt.ts             # XML assembly — file/folder reading, prompt building
     ├── preload/                  # Preload script (sandboxed bridge layer)
     │   ├── index.ts              # Exposes window.api via contextBridge
     │   └── index.d.ts            # TypeScript types for window.api
@@ -48,17 +49,25 @@ archyprompt/
             ├── assets/
             │   └── main.css      # Global styles — Tailwind entry point
             ├── features/         # Feature modules (one folder per domain)
-            │   └── projects/     # Everything related to project management
-            │       ├── types.ts                        # Project + FileTreeEntry interfaces
+            │   ├── projects/     # Project management + file tree navigation
+            │   │   ├── types.ts                        # Project + FileTreeEntry interfaces
+            │   │   ├── stores/
+            │   │   │   └── projects.ts                 # Pinia store — projects + file tree state
+            │   │   └── components/
+            │   │       ├── AppSidebar.vue              # Sidebar container — project list or file tree
+            │   │       ├── ProjectList.vue             # Renders the project list
+            │   │       ├── ProjectListItem.vue         # Single project row + checkbox
+            │   │       ├── AddProjectButton.vue        # "Add New Project" button
+            │   │       ├── FileTree.vue                # File tree container with back nav + scroll
+            │   │       └── FileTreeNode.vue            # Recursive tree node — folders/files + context checkbox
+            │   └── prompt-builder/   # Context aggregation and prompt assembly
+            │       ├── types.ts                        # ContextEntry interface
             │       ├── stores/
-            │       │   └── projects.ts                 # Pinia store — projects + file tree state
+            │       │   └── prompt.ts                   # Pinia store — context, assembly, metrics
             │       └── components/
-            │           ├── AppSidebar.vue              # Sidebar container — project list or file tree
-            │           ├── ProjectList.vue             # Renders the project list
-            │           ├── ProjectListItem.vue         # Single project row + checkbox
-            │           ├── AddProjectButton.vue        # "Add New Project" button
-            │           ├── FileTree.vue                # File tree container with back nav + scroll
-            │           └── FileTreeNode.vue            # Recursive tree node — folders/files
+            │           ├── PromptBuilder.vue           # Main content area — context + input + actions
+            │           ├── ContextStack.vue            # Context card grid (top of main area)
+            │           └── ContextCard.vue             # Individual file/folder card with remove button
             └── shared/           # Cross-feature reusable code (future)
                 ├── components/   # Generic UI components (buttons, modals, icons)
                 └── utils/        # Shared utility functions
@@ -159,5 +168,44 @@ There are three distinct execution contexts:
 | [`src/renderer/src/features/projects/components/ProjectList.vue`](src/renderer/src/features/projects/components/ProjectList.vue) | Passes through `select` event |
 | [`src/renderer/src/features/projects/components/AppSidebar.vue`](src/renderer/src/features/projects/components/AppSidebar.vue) | Conditional rendering: file tree vs project list |
 | [`tsconfig.web.json`](tsconfig.web.json) | Added preload `index.d.ts` to renderer TS includes |
+
+---
+
+### Phase 3 — Context-Aware Prompt Builder
+
+**Goal:** Turn the main content area into a prompt builder. Users check files/folders in the file tree to build a context stack, write a query, and copy the assembled XML prompt to the clipboard. Live character and token metrics update as the context changes.
+
+**What was added:**
+
+- `prompt.ts` (main process) — recursive XML assembly. Folders expand to `<folder><file>content</file></folder>` structure. Files become `<filename>content</filename>`. Binary files (images, fonts, zips, etc.) are replaced with `[binary file]`. Tag names are sanitized. Ignored directories (`node_modules`, `.git`, etc.) are skipped recursively.
+- New IPC channel `prompt:assemble` — accepts an array of `{path, isDirectory}`, returns `{xml, charCount, tokenEstimate}`
+- New `prompt-builder` feature module with its own Pinia store, managing: context entry list, user query text, assembled XML, live char/token counts, and clipboard copy
+- **Context Stack** (top of main area) — selected items displayed as removable `ContextCard` chips. Each card shows the entity name, extension (or "Folder"), and a hover-reveal remove button. "Clear all" button in the header.
+- **Prompt Input** (bottom) — multi-line textarea for user instructions
+- **Action Row** — live character and `~token` estimates (approximated at 4 chars/token), plus a "Copy Prompt" button that turns green with a checkmark on success
+- **Final prompt format:** assembled XML + `<user_query>user text</user_query>`
+- `FileTreeNode.vue` updated — each row has a checkbox that appears on hover (or stays visible when checked). Checking adds/removes the item from the context stack immediately, triggering a re-assembly.
+- `App.vue` updated — main area renders `<PromptBuilder>` when a project is active, placeholder otherwise
+
+**Files introduced:**
+
+| File | Description |
+|---|---|
+| [`src/main/prompt.ts`](src/main/prompt.ts) | XML assembler — recursive folder/file reading, binary detection, tag sanitization |
+| [`src/renderer/src/features/prompt-builder/types.ts`](src/renderer/src/features/prompt-builder/types.ts) | `ContextEntry` interface |
+| [`src/renderer/src/features/prompt-builder/stores/prompt.ts`](src/renderer/src/features/prompt-builder/stores/prompt.ts) | Pinia store — context list, assembly, metrics, clipboard |
+| [`src/renderer/src/features/prompt-builder/components/PromptBuilder.vue`](src/renderer/src/features/prompt-builder/components/PromptBuilder.vue) | Main content area layout |
+| [`src/renderer/src/features/prompt-builder/components/ContextStack.vue`](src/renderer/src/features/prompt-builder/components/ContextStack.vue) | Context card grid with clear-all |
+| [`src/renderer/src/features/prompt-builder/components/ContextCard.vue`](src/renderer/src/features/prompt-builder/components/ContextCard.vue) | Individual removable file/folder chip |
+
+**Files modified:**
+
+| File | Change |
+|---|---|
+| [`src/main/ipc.ts`](src/main/ipc.ts) | Added `prompt:assemble` IPC handler |
+| [`src/preload/index.ts`](src/preload/index.ts) | Exposed `assemblePrompt` on `window.api` |
+| [`src/preload/index.d.ts`](src/preload/index.d.ts) | Added `SelectedEntry`, `AssembleResult`, `assemblePrompt` types |
+| [`src/renderer/src/features/projects/components/FileTreeNode.vue`](src/renderer/src/features/projects/components/FileTreeNode.vue) | Added hover-reveal checkbox wired to prompt store |
+| [`src/renderer/src/App.vue`](src/renderer/src/App.vue) | Main area conditionally renders `PromptBuilder` |
 
 ---
