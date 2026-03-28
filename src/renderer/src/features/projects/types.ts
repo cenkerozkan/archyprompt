@@ -3,3 +3,9 @@ export interface Project {
   path: string
   name: string
 }
+
+export interface FileTreeEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}

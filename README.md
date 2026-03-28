@@ -34,7 +34,8 @@ archyprompt/
     ├── main/                     # Electron main process (Node.js — full system access)
     │   ├── index.ts              # App lifecycle, BrowserWindow creation
     │   ├── ipc.ts                # IPC handler registration (bridges UI ↔ system)
-    │   └── store.ts              # JSON-file persistence for project data
+    │   ├── store.ts              # JSON-file persistence for project data
+    │   └── filesystem.ts         # Directory reader — filtering, sorting, lazy reads
     ├── preload/                  # Preload script (sandboxed bridge layer)
     │   ├── index.ts              # Exposes window.api via contextBridge
     │   └── index.d.ts            # TypeScript types for window.api
@@ -48,14 +49,16 @@ archyprompt/
             │   └── main.css      # Global styles — Tailwind entry point
             ├── features/         # Feature modules (one folder per domain)
             │   └── projects/     # Everything related to project management
-            │       ├── types.ts                        # Project interface
+            │       ├── types.ts                        # Project + FileTreeEntry interfaces
             │       ├── stores/
-            │       │   └── projects.ts                 # Pinia store
+            │       │   └── projects.ts                 # Pinia store — projects + file tree state
             │       └── components/
-            │           ├── AppSidebar.vue              # Sidebar container, edit mode state
+            │           ├── AppSidebar.vue              # Sidebar container — project list or file tree
             │           ├── ProjectList.vue             # Renders the project list
             │           ├── ProjectListItem.vue         # Single project row + checkbox
-            │           └── AddProjectButton.vue        # "Add New Project" button
+            │           ├── AddProjectButton.vue        # "Add New Project" button
+            │           ├── FileTree.vue                # File tree container with back nav + scroll
+            │           └── FileTreeNode.vue            # Recursive tree node — folders/files
             └── shared/           # Cross-feature reusable code (future)
                 ├── components/   # Generic UI components (buttons, modals, icons)
                 └── utils/        # Shared utility functions
@@ -116,5 +119,45 @@ There are three distinct execution contexts:
 | [`src/renderer/src/features/projects/components/AddProjectButton.vue`](src/renderer/src/features/projects/components/AddProjectButton.vue) | Add project button |
 | [`src/renderer/src/App.vue`](src/renderer/src/App.vue) | Root layout — sidebar + main area |
 | [`src/renderer/src/assets/main.css`](src/renderer/src/assets/main.css) | Tailwind CSS entry point |
+
+---
+
+### Phase 2 — File Tree Navigation
+
+**Goal:** When a project is clicked in the sidebar, transition to a lazy-loaded, collapsible file tree view. The sidebar shows either the project list or the file tree — never both simultaneously. Deeply nested directories trigger horizontal scrolling.
+
+**What was added:**
+
+- New `FileTreeEntry` type (`name`, `path`, `isDirectory`) — the wire format for IPC directory reads
+- Main process `filesystem.ts` — reads a single directory's contents, sorts (folders first, then files, alphabetically), and filters out common noise directories (`node_modules`, `.git`, `__pycache__`, `dist`, etc.)
+- New IPC channel `fs:readDirectory` — accepts a directory path, validates it belongs to a known project (security guard), returns `FileTreeEntry[]`
+- Pinia store extended with: `activeProject`, `directoryCache` (Map), `expandedPaths` (Set), `loadingPaths` (Set), and actions `selectProject`, `deselectProject`, `toggleDirectory`, `loadDirectory`
+- Lazy loading: directories are only read on-demand when first expanded; collapsed then re-expanded uses the cache (instant)
+- `ProjectListItem.vue` updated — clicking a project in non-edit mode emits `select` instead of doing nothing
+- `FileTreeNode.vue` — recursive component. Renders a single file or folder row with depth-based indentation (via inline `paddingLeft` style). Folder rows have a rotating chevron. Shows a loading spinner while children are being fetched.
+- `FileTree.vue` — tree container. Header with back arrow + project name. Scrollable area with `overflow-x-auto overflow-y-auto` and `min-w-max` inner div so deep nesting forces horizontal scroll.
+- `AppSidebar.vue` updated — conditionally renders `<FileTree>` when a project is active, otherwise shows the project list
+
+**Files introduced:**
+
+| File | Description |
+|---|---|
+| [`src/main/filesystem.ts`](src/main/filesystem.ts) | Directory reader — filtering, sorting, error handling |
+| [`src/renderer/src/features/projects/components/FileTree.vue`](src/renderer/src/features/projects/components/FileTree.vue) | File tree container with header and scroll |
+| [`src/renderer/src/features/projects/components/FileTreeNode.vue`](src/renderer/src/features/projects/components/FileTreeNode.vue) | Recursive tree node — folder/file icons, expand/collapse |
+
+**Files modified:**
+
+| File | Change |
+|---|---|
+| [`src/main/ipc.ts`](src/main/ipc.ts) | Added `fs:readDirectory` handler with path validation |
+| [`src/preload/index.ts`](src/preload/index.ts) | Exposed `readDirectory` on `window.api` |
+| [`src/preload/index.d.ts`](src/preload/index.d.ts) | Added `FileTreeEntry` type and `readDirectory` method |
+| [`src/renderer/src/features/projects/types.ts`](src/renderer/src/features/projects/types.ts) | Added `FileTreeEntry` interface |
+| [`src/renderer/src/features/projects/stores/projects.ts`](src/renderer/src/features/projects/stores/projects.ts) | Extended with active project and file tree state |
+| [`src/renderer/src/features/projects/components/ProjectListItem.vue`](src/renderer/src/features/projects/components/ProjectListItem.vue) | Added `select` emit for non-edit mode clicks |
+| [`src/renderer/src/features/projects/components/ProjectList.vue`](src/renderer/src/features/projects/components/ProjectList.vue) | Passes through `select` event |
+| [`src/renderer/src/features/projects/components/AppSidebar.vue`](src/renderer/src/features/projects/components/AppSidebar.vue) | Conditional rendering: file tree vs project list |
+| [`tsconfig.web.json`](tsconfig.web.json) | Added preload `index.d.ts` to renderer TS includes |
 
 ---

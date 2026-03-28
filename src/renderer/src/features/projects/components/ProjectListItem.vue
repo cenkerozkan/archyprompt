@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Project } from '../types'
 
-const props = defineProps<{
+defineProps<{
   project: Project
   isEditing: boolean
   isSelected: boolean
@@ -9,16 +9,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggle: [id: string]
+  select: [project: Project]
 }>()
+
+function handleRowClick(isEditing: boolean, project: Project): void {
+  if (isEditing) {
+    emit('toggle', project.id)
+  } else {
+    emit('select', project)
+  }
+}
 </script>
 
 <template>
   <div
     class="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer select-none transition-colors duration-100"
-    :class="[
-      isSelected ? 'bg-white/10' : 'hover:bg-white/5'
-    ]"
-    @click="isEditing && emit('toggle', project.id)"
+    :class="[isSelected ? 'bg-white/10' : 'hover:bg-white/5']"
+    @click="handleRowClick(isEditing, project)"
   >
     <input
       v-if="isEditing"

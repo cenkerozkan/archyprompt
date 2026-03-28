@@ -10,6 +10,7 @@ defineProps<{
 
 const emit = defineEmits<{
   toggle: [id: string]
+  select: [project: Project]
 }>()
 </script>
 
@@ -25,6 +26,7 @@ const emit = defineEmits<{
       :is-editing="isEditing"
       :is-selected="selectedIds.has(project.id)"
       @toggle="emit('toggle', $event)"
+      @select="emit('select', $event)"
     />
   </div>
 </template>

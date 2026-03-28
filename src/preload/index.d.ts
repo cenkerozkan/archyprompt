@@ -6,10 +6,17 @@ interface Project {
   name: string
 }
 
+interface FileTreeEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
 interface ProjectAPI {
   listProjects(): Promise<Project[]>
   addProject(): Promise<Project[]>
   deleteProjects(ids: string[]): Promise<Project[]>
+  readDirectory(dirPath: string): Promise<FileTreeEntry[]>
 }
 
 declare global {
